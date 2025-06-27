@@ -11,7 +11,7 @@
    limitations under the License.
  */
 import { Component, DestroyRef, Inject, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
+
 import {
   MAT_DIALOG_DATA,
   MatDialogRef,
@@ -22,6 +22,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatButtonModule } from '@angular/material/button';
 import { FormsModule } from '@angular/forms';
 import { MatInputModule } from '@angular/material/input';
+import { MatIconModule } from '@angular/material/icon';
 import { DocumentService } from '../service/document.service';
 import { tap } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -29,19 +30,18 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 export interface DocImportData {}
 
 @Component({
-  selector: 'app-docimport',
-  standalone: true,
-  imports: [
-    CommonModule,
+    selector: 'app-docimport',
+    imports: [
     MatFormFieldModule,
     MatDialogModule,
     MatButtonModule,
     MatInputModule,
+    MatIconModule,
     FormsModule,
-    MatProgressSpinnerModule,
-  ],
-  templateUrl: './doc-import.component.html',
-  styleUrls: ['./doc-import.component.scss'],
+    MatProgressSpinnerModule
+],
+    templateUrl: './doc-import.component.html',
+    styleUrls: ['./doc-import.component.scss']
 })
 export class DocImportComponent {
   protected file: File | null = null;

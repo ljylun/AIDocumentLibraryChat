@@ -18,20 +18,20 @@ import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.StringTokenizer;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.ai.chat.ChatClient;
-import org.springframework.ai.chat.ChatResponse;
+import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
-import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.chat.prompt.SystemPromptTemplate;
 import org.springframework.ai.reader.tika.TikaDocumentReader;
 import org.springframework.beans.factory.annotation.Value;
@@ -101,10 +101,10 @@ public class DocumentService {
 	private String activeProfile;
 
 	public DocumentService(DocumentRepository documentRepository, DocumentVsRepository documentVsRepository,
-			ChatClient chatClient, BookRepository bookRepository, ChapterRepository chapterRepository) {
+			ChatClient.Builder builder, BookRepository bookRepository, ChapterRepository chapterRepository) {
 		this.documentRepository = documentRepository;
 		this.documentVsRepository = documentVsRepository;
-		this.chatClient = chatClient;
+		this.chatClient = builder.build();
 		this.bookRepository = bookRepository;
 		this.chapterRepository = chapterRepository;
 	}
@@ -144,36 +144,36 @@ public class DocumentService {
 
 	public List<Book> findBooksByTitleAuthor(String titleAuthor) {
 		return Optional.ofNullable(titleAuthor).stream().filter(myStr -> myStr.trim().length() > 2)
-				.map(myStr -> myStr.toLowerCase())
+				.map(String::toLowerCase)
 				.flatMap(myStr -> Stream.of(this.bookRepository.findByTitleAuthorWithChapters(myStr)))
-				.flatMap(myList -> myList.stream()).toList();
+				.flatMap(List::stream).toList();
 	}
 
 	@Async
 	public void addBookSummaries(Book book) {
 		var myChapters = book.getChapters().stream().map(myChapter -> this.addChapterSummary(myChapter)).toList();
 		// LOGGER.info(myChapters.getLast().getSummary());
-		var summaries = myChapters.stream().map(myChapter -> myChapter.getChapterText())
+		var summaries = myChapters.stream().map(Chapter::getChapterText)
 				.reduce((acc, myChapter) -> acc + "\n" + myChapter);
-		book.setSummary(this.chatClient
-				.call(new SystemPromptTemplate(this.bookPrompt).createMessage(Map.of("text", summaries)).getContent()));
+		book.setSummary(this.chatClient.prompt().user(u -> u.text(this.bookPrompt).params(Map.of("text", summaries)))
+				.call().content());
 		// LOGGER.info(myBook.getSummary());
 		LOGGER.info("Summary generated file: {}", book.getTitle());
 		this.bookRepository.save(book);
 	}
 
-	private Chapter addChapterSummary(Chapter myChapter) {
-		var answer = this.chatClient.call(new SystemPromptTemplate(this.bookPrompt)
-				.createMessage(Map.of("text", myChapter.getChapterText())).getContent());
+	private Chapter addChapterSummary(final Chapter myChapter) {
+		var answer = this.chatClient.prompt()
+				.user(u -> u.text(this.bookPrompt).params(Map.of("text", myChapter.getChapterText()))).call().content();
 		myChapter.setSummary(answer);
-		myChapter = this.chapterRepository.save(myChapter);
-		LOGGER.info("Summary generated for: {}", myChapter.getTitle());
-		return myChapter;
+		var resultChapter = this.chapterRepository.save(myChapter);
+		LOGGER.info("Summary generated for: {}", resultChapter.getTitle());
+		return resultChapter;
 	}
 
 	private Chapter createChapter(Book book, String heading, AtomicReference<List<String>> atomicRef) {
 		var result = new Chapter();
-		result.setTitle(atomicRef.get().stream().filter(myLine -> !myLine.isBlank()).findFirst().orElse(""));
+		result.setTitle(atomicRef.get().stream().filter(Predicate.not(String::isBlank)).findFirst().orElse(""));
 		result.setBook(book);
 		var chapterText = atomicRef.get().stream().takeWhile(myLine -> !myLine.contains(heading))
 				.collect(Collectors.joining(System.lineSeparator()));
@@ -188,7 +188,7 @@ public class DocumentService {
 		record TikaDocumentAndContent(org.springframework.ai.document.Document document, String content) {
 		}
 		var aiDocuments = tikaDocuments.stream()
-				.flatMap(myDocument1 -> this.splitStringToTokenLimit(myDocument1.getContent(), embeddingTokenLimit)
+				.flatMap(myDocument1 -> this.splitStringToTokenLimit(myDocument1.getText(), embeddingTokenLimit)
 						.stream().map(myStr -> new TikaDocumentAndContent(myDocument1, myStr)))
 				.map(myTikaRecord -> new org.springframework.ai.document.Document(myTikaRecord.content(),
 						myTikaRecord.document().getMetadata()))
@@ -226,11 +226,11 @@ public class DocumentService {
 			this.getSystemMessage(mostSimilar.stream().toList(), this.documentTokenLimit, searchDto.getSearchString());
 		default -> this.getSystemMessage(documentChunks, this.documentTokenLimit, searchDto.getSearchString());
 		};
-		UserMessage userMessage = this.activeProfile.contains("ollama") ? new UserMessage(systemMessage.getContent())
+		UserMessage userMessage = this.activeProfile.contains("ollama") ? new UserMessage(systemMessage.getText())
 				: new UserMessage(searchDto.getSearchString());
-		Prompt prompt = new Prompt(List.of(systemMessage, userMessage));
 		LocalDateTime start = LocalDateTime.now();
-		ChatResponse response = chatClient.call(prompt);
+		var response = chatClient.prompt().system(s -> s.text(systemMessage.getText()))
+				.user(u -> u.text(userMessage.getText())).call().chatResponse();
 		LOGGER.info("AI response time: {}ms",
 				ZonedDateTime.of(LocalDateTime.now(), ZoneId.systemDefault()).toInstant().toEpochMilli()
 						- ZonedDateTime.of(start, ZoneId.systemDefault()).toInstant().toEpochMilli());
@@ -251,8 +251,9 @@ public class DocumentService {
 	private Message getSystemMessage(List<org.springframework.ai.document.Document> similarDocuments, int tokenLimit,
 			String prompt) {
 		String documentStr = this.cutStringToTokenLimit(
-				similarDocuments.stream().map(entry -> entry.getContent())
-						.filter(myStr -> myStr != null && !myStr.isBlank()).collect(Collectors.joining("\n")),
+				similarDocuments.stream().map(entry -> entry.getText())				
+				.filter(Predicate.not(Objects::isNull))
+						.filter(Predicate.not(String::isBlank)).collect(Collectors.joining("\n")),
 				tokenLimit);
 		SystemPromptTemplate systemPromptTemplate = this.activeProfile.contains("ollama")
 				? new SystemPromptTemplate(this.ollamaPrompt)

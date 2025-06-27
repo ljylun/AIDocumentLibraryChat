@@ -16,10 +16,12 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -30,27 +32,29 @@ public class OpenLibraryRestClient implements OpenLibraryClient {
 	private static final Logger LOGGER = LoggerFactory.getLogger(OpenLibraryRestClient.class);
 	private final String baseUrl = "https://openlibrary.org/search.json";
 	private final RestClient restClient;
-	
+	@Value("${openlibrary.result-size:5}")
+	private int resultLimit;
+
 	public OpenLibraryRestClient(RestClient restClient) {
 		this.restClient = restClient;
 	}
-	
+
 	@Override
 	public Response apply(Request request) {
 		var authorOpt = this.createParamOpt(request.author(), "author");
 		var titleOpt = this.createParamOpt(request.title(), "title");
 		var subjectOpt = this.createParamOpt(request.subject(), "subject");
-		var paramsStr = List.of(authorOpt, titleOpt, subjectOpt).stream()
-				.filter(Optional::isPresent).map(myOpt -> myOpt.get()).collect(Collectors.joining("&"));
-		var urlStr = 
-				String.format("%s?%s", this.baseUrl, paramsStr);
+		var paramsStr = List.of(authorOpt, titleOpt, subjectOpt).stream().flatMap(Optional::stream)
+				.collect(Collectors.joining("&"));
+		var urlStr = String.format("%s?%s&fields=*&limit=%d", this.baseUrl, paramsStr, this.resultLimit);
 		LOGGER.info(urlStr);
 		var response = this.restClient.get().uri(urlStr).retrieve().body(Response.class);
 		return response;
 	}
 
 	private Optional<String> createParamOpt(String valueStr, String keyStr) {
-		return Optional.ofNullable(valueStr).stream().filter(myAuthor -> !myAuthor.isBlank())
-				.map(myAuthor -> String.format("%s=%s", keyStr, URLEncoder.encode(myAuthor, StandardCharsets.UTF_8))).findFirst();
+		return Optional.ofNullable(valueStr).stream().filter(Predicate.not(String::isBlank))
+				.map(myAuthor -> String.format("%s=%s", keyStr, URLEncoder.encode(myAuthor, StandardCharsets.UTF_8)))
+				.findFirst();
 	}
 }

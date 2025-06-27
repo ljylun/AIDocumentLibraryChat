@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import ch.xxx.aidoclibchat.domain.client.OpenLibraryClient;
+import ch.xxx.aidoclibchat.domain.model.dto.FunctionResult;
 import ch.xxx.aidoclibchat.domain.model.dto.FunctionSearch;
 import ch.xxx.aidoclibchat.usecase.service.FunctionService;
 
@@ -38,8 +38,8 @@ public class FunctionController {
 //	}
 	
 	@PostMapping(path="/books", produces = MediaType.APPLICATION_JSON_VALUE)
-	public OpenLibraryClient.Response postQuestion(@RequestBody FunctionSearch functionSearch) {
-		return this.functionService.functionCall(functionSearch.question(), functionSearch.resultsAmount());
+	public FunctionResult postQuestion(@RequestBody FunctionSearch functionSearch) {
+		return this.functionService.functionCall(functionSearch.question(), functionSearch.resultFormat());
 	}
 	
 }

@@ -26,21 +26,22 @@ import {
   ReactiveFormsModule,
 } from '@angular/forms';
 import { Router } from '@angular/router';
+import { MatIconModule } from '@angular/material/icon';
 import { MatToolbarModule } from '@angular/material/toolbar';
 
 @Component({
-  selector: 'app-image-query',
-  standalone: true,
-  imports: [
-    CommonModule,
-    MatProgressSpinnerModule,
-    MatInputModule,
-    MatButtonModule,
-    ReactiveFormsModule,
-    MatToolbarModule,
-  ],
-  templateUrl: './image-query.component.html',
-  styleUrl: './image-query.component.scss',
+    selector: 'app-image-query',
+    imports: [
+        CommonModule,
+        MatProgressSpinnerModule,
+        MatInputModule,
+        MatButtonModule,
+		MatIconModule,
+        ReactiveFormsModule,
+        MatToolbarModule,
+    ],
+    templateUrl: './image-query.component.html',
+    styleUrl: './image-query.component.scss'
 })
 export class ImageQueryComponent {
   //'What do you see in the image? Describe the background. Describe the colors.'
@@ -68,8 +69,8 @@ export class ImageQueryComponent {
     private router: Router
   ) {}
 
-  protected onFileInputChange($event: Event): void {
-    this.result = null;
+  protected onFileInputChange($event: Event): void {    
+	this.result = null;
     const files = !$event.target
       ? null
       : ($event.target as HTMLInputElement).files;
@@ -110,6 +111,11 @@ export class ImageQueryComponent {
       );
   }
 
+  protected reset(): void {
+	this.result = null;
+	this.imageForm.controls['file'].reset();
+  }
+  
   protected upload(): void {
     //console.log(this.file);
     if (!!this.imageForm.controls.file.value) {

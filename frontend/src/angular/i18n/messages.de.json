@@ -1,8 +1,9 @@
 {
   "locale": "de",
   "translations": {
-    "bookImportHeading": "Book Import",
-    "bookImportBookList": " Booklist ",
+    "bookImportHeading": "Buch Import",
+    "bookImportBookList": " Bücher Liste ",
+    "logout": " Logout ",
     "bookImportAddChapter": "Add Chapter",
     "bookListHeading": "Book List",
     "back": " Back ",
@@ -38,11 +39,15 @@
     "link": " Link: {$START_LINK}{$INTERPOLATION}{$CLOSE_LINK}",
     "docSearchOtherDocuments": "Other Documents:",
     "functionSearchHeading": "Function Search",
+    "functionSearchTitle": "Title",
+    "functionSearchSummary": "Summary",
+    "functionSearchAuthor": "Author",
     "imageQueryHeading": "Image Query",
     "query": "Query",
     "imageQueryPrompt": "Image prompt",
     "tableSearchHeading": "Table Search",
     "tableSearchDataImport": "A new DB instance needs a data import first.",
-    "tableSearchImportData": " Import Data "
+    "tableSearchImportData": " Import Data ",
+    "reset": "Reset"
   }
 }

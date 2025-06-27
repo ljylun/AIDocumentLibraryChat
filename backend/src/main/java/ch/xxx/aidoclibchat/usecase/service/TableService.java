@@ -19,16 +19,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.ai.chat.ChatClient;
-import org.springframework.ai.chat.ChatResponse;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.ChatClient.Builder;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.chat.prompt.SystemPromptTemplate;
 import org.springframework.ai.document.Document;
@@ -97,12 +98,16 @@ public class TableService {
 	@Value("${spring.profiles.active:}")
 	private String activeProfile;
 
-	public TableService(ImportClient importClient, ImportService importService, ChatClient chatClient,
+	record MyTableData(String joinColumn, String joinTable, String columnValue, List<TableNameSchema> tableRecords,
+			TableColumnNames tableColumnNames) {
+	}
+
+	public TableService(ImportClient importClient, ImportService importService, Builder builder,
 			JdbcTemplate jdbcTemplate, TableMetadataRepository tableMetadataRepository,
 			DocumentVsRepository documentVsRepository) {
 		this.importClient = importClient;
 		this.importService = importService;
-		this.chatClient = chatClient;
+		this.chatClient = builder.build();
 		this.documentVsRepository = documentVsRepository;
 		this.tableMetadataRepository = tableMetadataRepository;
 		this.jdbcTemplate = jdbcTemplate;
@@ -122,8 +127,8 @@ public class TableService {
 
 	private String createQuery(Prompt prompt) {
 		var chatStart = new Date();
-		ChatResponse response = chatClient.call(prompt);
-		String chatResult = response.getResults().stream().map(myGen -> myGen.getOutput().getContent())
+		ChatResponse response = chatClient.prompt(prompt).call().chatResponse();
+		String chatResult = response.getResults().stream().map(myGen -> myGen.getOutput().getText())
 				.collect(Collectors.joining(","));
 		LOGGER.info("AI response time: {}ms", new Date().getTime() - chatStart.getTime());
 		LOGGER.info("AI response: {}", chatResult);
@@ -147,37 +152,48 @@ public class TableService {
 		List<TableNameSchema> tableRecords = this.tableMetadataRepository
 				.findByTableNameIn(tableColumnNames.tableNames()).stream()
 				.map(tableMetaData -> new TableNameSchema(tableMetaData.getTableName(), tableMetaData.getTableDdl()))
-				.collect(Collectors.toList());
-		final AtomicReference<String> joinColumn = new AtomicReference<String>("");
-		final AtomicReference<String> joinTable = new AtomicReference<String>("");
-		final AtomicReference<String> columnValue = new AtomicReference<String>("");
-		sortedRowDocs.stream().filter(myDoc -> minRowDistance <= MAX_ROW_DISTANCE)
+				.collect(Collectors.toList());		
+		var result = sortedRowDocs.stream().filter(myDoc -> minRowDistance <= MAX_ROW_DISTANCE)
 				.filter(myRowDoc -> tableRecords.stream()
 						.filter(myRecord -> myRecord.name().equals(myRowDoc.getMetadata().get(MetaData.TABLE_NAME)))
 						.findFirst().isEmpty())
-				.findFirst().ifPresent(myRowDoc -> {
-					joinTable.set(((String) myRowDoc.getMetadata().get(MetaData.TABLE_NAME)));
-					joinColumn.set(((String) myRowDoc.getMetadata().get(MetaData.DATANAME)));
-					tableColumnNames.columnNames().add(((String) myRowDoc.getMetadata().get(MetaData.DATANAME)));
-					columnValue.set(myRowDoc.getContent());
-					this.tableMetadataRepository
-							.findByTableNameIn(List.of(((String) myRowDoc.getMetadata().get(MetaData.TABLE_NAME))))
-							.stream()
-							.map(myTableMetadata -> new TableNameSchema(myTableMetadata.getTableName(),
-									myTableMetadata.getTableDdl()))
-							.findFirst().ifPresent(myRecord -> tableRecords.add(myRecord));
-				});
-		var messages = this.createMessages(searchDto, minRowDistance, tableColumnNames, tableRecords, joinColumn,
-				joinTable, columnValue);
+				.findFirst().map(myRowDoc -> createTableData(tableColumnNames, tableRecords, myRowDoc))
+				.orElseThrow();
+		var messages = this.createMessages(searchDto, minRowDistance, result.tableColumnNames(), result.tableRecords(), result.joinColumn(),
+				result.joinTable(), result.columnValue());
 		Prompt prompt = new Prompt(messages);
 //		LOGGER.info("Prompt: {}", prompt.getContents());
 		return prompt;
 	}
 
+	private MyTableData createTableData(TableColumnNames tableColumnNames, List<TableNameSchema> tableRecords,
+			Document myRowDoc) {
+		tableColumnNames.columnNames().add(((String) myRowDoc.getMetadata().get(MetaData.DATANAME)));
+		return findTable(myRowDoc).map(myRecord -> {
+			tableRecords.add(myRecord);
+			return createMyTableResult(tableColumnNames, tableRecords, myRowDoc);
+		}).orElse(createMyTableResult(tableColumnNames, tableRecords, myRowDoc));
+	}
+
+	private MyTableData createMyTableResult(TableColumnNames tableColumnNames, List<TableNameSchema> tableRecords,
+			Document myRowDoc) {
+		return new MyTableData(((String) myRowDoc.getMetadata().get(MetaData.DATANAME)),
+				((String) myRowDoc.getMetadata().get(MetaData.TABLE_NAME)), myRowDoc.getText(), tableRecords,
+				tableColumnNames);
+	}
+
+	private Optional<TableNameSchema> findTable(Document myRowDoc) {
+		return this.tableMetadataRepository
+				.findByTableNameIn(List.of(((String) myRowDoc.getMetadata().get(MetaData.TABLE_NAME)))).stream()
+				.map(myTableMetadata -> new TableNameSchema(myTableMetadata.getTableName(),
+						myTableMetadata.getTableDdl()))
+				.findFirst();
+	}
+
 	private List<Message> createMessages(SearchDto searchDto, final Float minRowDistance,
 			TableColumnNames tableColumnNames, List<TableNameSchema> tableRecords,
-			final AtomicReference<String> joinColumn, final AtomicReference<String> joinTable,
-			final AtomicReference<String> columnValue) {
+			final String joinColumn, final String joinTable,
+			final String columnValue) {
 		SystemPromptTemplate systemPromptTemplate = this.activeProfile.contains("ollama")
 				? new SystemPromptTemplate(minRowDistance > MAX_ROW_DISTANCE ? String.format(this.ollamaPrompt, "")
 						: String.format(this.ollamaPrompt, columnMatch))
@@ -186,9 +202,9 @@ public class TableService {
 		Message systemMessage = systemPromptTemplate.createMessage(
 				Map.of("columns", tableColumnNames.columnNames().stream().collect(Collectors.joining(",")), "schemas",
 						tableRecords.stream().map(myRecord -> myRecord.schema()).collect(Collectors.joining(";")),
-						"prompt", searchDto.getSearchString(), "joinColumn", joinColumn.get(), "joinTable",
-						joinTable.get(), "columnValue", columnValue.get()));
-		UserMessage userMessage = this.activeProfile.contains("ollama") ? new UserMessage(systemMessage.getContent())
+						"prompt", searchDto.getSearchString(), "joinColumn", joinColumn, "joinTable",
+						joinTable, "columnValue", columnValue));
+		UserMessage userMessage = this.activeProfile.contains("ollama") ? new UserMessage(systemMessage.getText())
 				: new UserMessage(searchDto.getSearchString());
 		return List.of(systemMessage, userMessage);
 	}
@@ -225,7 +241,7 @@ public class TableService {
 								.collect(Collectors.joining(" ")));
 			}
 		}
-		var rowDocuments = rowSearchStrs.stream().filter(myStr -> !myStr.isBlank())
+		var rowDocuments = rowSearchStrs.stream().filter(Predicate.not(String::isBlank))
 				.flatMap(myStr -> this.documentVsRepository
 						.retrieve(myStr, MetaData.DataType.ROW, searchDto.getResultAmount()).stream())
 				.toList();
@@ -285,10 +301,10 @@ public class TableService {
 		List<Document> rowDocs = Stream.concat(
 				this.importService.findAllSubjects().stream()
 						.filter(mySubject -> Optional.ofNullable(mySubject.getSubject()).stream()
-								.allMatch(mySubjectStr -> !mySubjectStr.isBlank()))
+								.allMatch(Predicate.not(String::isBlank)))
 						.map(this::map),
 				this.importService.findAllWorks().stream().filter(myWork -> Optional.ofNullable(myWork.getStyle())
-						.stream().allMatch(myStyle -> !myStyle.isBlank())).map(this::map))
+						.stream().allMatch(Predicate.not(String::isBlank))).map(this::map))
 				.toList();
 		this.importService.addDocuments(rowDocs);
 		LOGGER.info("Row Embeddings updated {}ms", new Date().getTime() - rowStart.getTime());
@@ -319,9 +335,9 @@ public class TableService {
 		result.getMetadata().put(MetaData.DATANAME, columnMetadata.getColumnName());
 		result.getMetadata().put(MetaData.TABLE_NAME, columnMetadata.getTableMetadata().getTableName());
 		result.getMetadata().put(MetaData.PRIMARY_KEY, columnMetadata.isColumnPrimaryKey());
-		Optional.ofNullable(columnMetadata.getReferenceTableName()).stream().filter(myStr -> !myStr.isBlank())
+		Optional.ofNullable(columnMetadata.getReferenceTableName()).stream().filter(Predicate.not(String::isBlank))
 				.findFirst().ifPresent(myStr -> result.getMetadata().put(MetaData.REFERENCE_TABLE, myStr));
-		Optional.ofNullable(columnMetadata.getReferenceTableColumn()).stream().filter(myStr -> !myStr.isBlank())
+		Optional.ofNullable(columnMetadata.getReferenceTableColumn()).stream().filter(Predicate.not(String::isBlank))
 				.findFirst().ifPresent(myStr -> result.getMetadata().put(MetaData.REFERENCE_COLUMN, myStr));
 		return result;
 	}

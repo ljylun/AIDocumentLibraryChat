@@ -12,7 +12,7 @@
  */
 export interface FunctionSearch {
   question: string;
-  resultAmount: number;
+  resultFormat: string;
 }
 
 export interface Book {
@@ -34,4 +34,19 @@ export interface FunctionResponse {
   start: number;
   numFoundExact: boolean;
   docs: Book[];
+}
+
+export interface FunctionResult {
+	result?: string;
+	jsonResult?: JsonResult[];
+}
+
+export interface JsonResult {
+	author: string;
+	books: JsonBook[];
+}
+
+export interface JsonBook {
+	title: string;
+	summary: string;
 }

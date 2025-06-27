@@ -14,10 +14,6 @@ package ch.xxx.aidoclibchat.domain.model.dto;
 
 import java.util.List;
 
-import org.springframework.ai.chat.model.Generation;
+import ch.xxx.aidoclibchat.usecase.service.FunctionService.JsonResult;
 
-import ch.xxx.aidoclibchat.domain.model.entity.Document;
-
-public record AiDocumentResult(String searchString, List<Generation> generations, List<Document> documents) {
-
-}
+public record FunctionResult(String result, List<JsonResult> jsonResult) { }

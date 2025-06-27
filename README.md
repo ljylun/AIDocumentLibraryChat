@@ -7,7 +7,7 @@ Technologies: Angular, Angular-Cli, Angular-Material, Typescript, Spring Boot, S
 [![CodeQL](https://github.com/Angular2Guy/AIDocumentLibraryChat/actions/workflows/codeql.yml/badge.svg)](https://github.com/Angular2Guy/AIDocumentLibraryChat/actions/workflows/codeql.yml)
 
 ### DocumentLibraryChat
-This is a project to show howto use SpringAI to chat with the documents in a library. Document can be uploaded are then stored in a normal and vector database. The AI is used to create embeddings from the chunks of the documents that are stored in the vector database. In the chat questions can be asked that are turned in embeddings and are used for requests to the vector database. The document vector with the lowest distance is used to load the document from the database and to request an answer from the AI based on document content tokens. That enables the AI to generate the answer based on the content of the document and limits hallucinations. A link to the source document is provided for further research.
+This is a project to show howto use SpringAI 1.0.0+ to chat with the documents in a library. Document can be uploaded are then stored in a normal and vector database. The AI is used to create embeddings from the chunks of the documents that are stored in the vector database. In the chat questions can be asked that are turned in embeddings and are used for requests to the vector database. The document vector with the lowest distance is used to load the document from the database and to request an answer from the AI based on document content tokens. That enables the AI to generate the answer based on the content of the document and limits hallucinations. A link to the source document is provided for further research.
 
 The project uses Spring Boot with Spring AI to access OpenAI and the vector database. The Postgresql DB is used with the vector, hstore and the uuid-ossp extensions. Liquibase is used to manage the database migrations. Jpa is used for database access in the services by the rest controllers. For the frontend Angular, Angular Material and Typescript is used to create the table of documents, the upload dialog and the document chat. Angular Cli is used for the frontend build and Gradle for the project build.
 
@@ -21,7 +21,7 @@ The project uses Spring Boot with Spring AI to question a image database that us
 The project uses Spring AI to turn questions with a LLMs into Sql queries and display the result in the frontend. Based on metadata that is provided for the relational dataset the LLM is able to create embeddings for the metadata of the tables and columns. The project also creates embeddings for the content of certain columns to be able to decide if the column should be used as join in the Sql query. With that embedding metadata the LLM is able to turn a question in a reasonable Sql query and display the result in the frontend. The frontend uses a Angular Material Table with a flexible amount of columns and rows. 
 
 ### Function calls for book search
-The project uses Spring AI to turn questions about books into a rest function call to the OpenLibrary Api. It uses the Ollama Mixtral model to take the parameters from the question and turn them in a Json format that can be used to call the Api.
+The project uses Spring AI to turn questions about books into a rest function call to the OpenLibrary Api. It uses the Llama3.1 model and the Spring AI function calling api. The api response is used to create the response.
 
 ### Generating code
 The project uses Spring AI to generate test classes. To do that the class to test is provided and the classes the class to test depends on. A test example class can also be provided. The ollama based AI/LLM then gets a prompt with all the information and generates a draft of the source of the test class.
@@ -30,6 +30,7 @@ The project uses Spring AI to generate test classes. To do that the class to tes
 The project uses Spring AI to generate summaries of books. To generate the summaries the chapter headings and the heading after the last chapter have to be provided. Then summaries of the chapters in form of bullet points are generated. A book summary is created of the chapter summaries. 
 
 ## Articles
+* [Fresh data for the AI with Spring AI Function calls](https://angular2guy.wordpress.com/2025/01/01/fresh-data-for-the-ai-with-spring-ai-function-calls/)
 * [Using Spring AI with LLMs to generate Java tests](https://angular2guy.wordpress.com/2024/07/15/using-spring-ai-with-llms-to-generate-code/)
 * [Questioning an Image Database with local AI/LLM on Ollama and Spring AI](https://angular2guy.wordpress.com/2024/05/17/questioning-an-image-database-with-ai-llm-and-spring-ai/)
 * [Extending AI/LLM Capabilities with Rag and Function calls](https://angular2guy.wordpress.com/2024/03/17/extending-ai-llm-capabilities/)
@@ -42,7 +43,7 @@ The project uses Spring AI to generate summaries of books. To generate the summa
 2. It uploads new documents and creates the embeddings.
 3. It provides a chat box and shows the AI answers based on the nearest document with a link.
 4. It displays the result of the Sql query based on the question.
-5. It displays the results of the rest api with parameters based on to question.
+5. It displays the responses based on the results of the api requested based on the user question.
 6. It displays the results of the questions to the image database.
 7. It generates tests for sources in public Github repositories
 8. It generates book summaries of epub of pdf books.
@@ -69,10 +70,6 @@ In the helm directory is a kubernetes setup to run the AIDocumentLibraryChat pro
 
 ## Postgresql setup
 In the [runPostgresql.sh](https://github.com/Angular2Guy/AIDocumentLibraryChat/blob/master/runPostgresql.sh) file are the commands to pull and run the Postgresql Docker image with vector extension locally. 
-
-## OpenAI Api key
-To get the OpenAI api key you need to create a account at [https://platform.openai.com](https://platform.openai.com) and create a key in the user settings. That key has to be added in the [application.properties](https://github.com/Angular2Guy/AIDocumentLibraryChat/blob/master/backend/src/main/resources/application.properties) at the key: 'spring.ai.openai.api-key'.
-As alternative it can be provided as the environment variable 'OPEN-API-KEY'.
 
 ## Ollama setup
 [Ollama](https://ollama.ai/) can run the AI model locally. The file [runOllama.sh](https://github.com/Angular2Guy/AIDocumentLibraryChat/blob/master/runOllama.sh) has the commands to run it as Docker container. The application needs to be build with the 'useOllama=true' Gradle build property to include the dependencies. The application needs to be started with the 'ollama' profile to switch on the configs/features to use Ollama based models. Ollama has support for GPU acceleration.

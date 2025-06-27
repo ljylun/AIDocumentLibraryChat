@@ -27,12 +27,14 @@ import javax.imageio.ImageIO;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.ai.chat.ChatClient;
-import org.springframework.ai.chat.messages.Media;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.ChatClient.Builder;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.content.Media;
 import org.springframework.ai.document.Document;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.stereotype.Service;
 import org.springframework.util.MimeType;
 
@@ -50,11 +52,12 @@ import jakarta.transaction.Transactional;
 @Transactional
 public class ImageService {
 	private static final Logger LOG = LoggerFactory.getLogger(ImageService.class);
-	private ChatClient chatClient;
-	private ImageRepository imageRepository;
-	private DocumentVsRepository documentVsRepository;
+	private final ChatClient chatClient;
+	private final ImageRepository imageRepository;
+	private final DocumentVsRepository documentVsRepository;
 	@Value("${image.result-size:20}")
 	private Long resultSize;
+	//private final String systemPrompt = "You are a helpful assistent searching image descriptions.";
 
 	private record ResultData(String answer, ImageQueryDto imageQueryDto) {
 	}
@@ -62,9 +65,8 @@ public class ImageService {
 	private record ImageContainer(Document document, Image image, Float distance) {
 	}
 
-	public ImageService(ChatClient chatClient, ImageRepository imageRepository,
-			DocumentVsRepository documentVsRepository) {
-		this.chatClient = chatClient;
+	public ImageService(Builder builder, ImageRepository imageRepository, DocumentVsRepository documentVsRepository) {
+		this.chatClient = builder.build();
 		this.imageRepository = imageRepository;
 		this.documentVsRepository = documentVsRepository;
 	}
@@ -83,7 +85,8 @@ public class ImageService {
 	}
 
 	public List<ImageDto> queryImage(String imageQuery) {
-		var aiDocuments = this.documentVsRepository.retrieve(imageQuery, MetaData.DataType.IMAGE, this.resultSize.intValue()).stream()
+		var aiDocuments = this.documentVsRepository
+				.retrieve(imageQuery, MetaData.DataType.IMAGE, this.resultSize.intValue()).stream()
 				.filter(myDoc -> myDoc.getMetadata().get(MetaData.DATATYPE).equals(DataType.IMAGE.toString()))
 				.sorted((myDocA, myDocB) -> ((Float) myDocA.getMetadata().get(MetaData.DISTANCE))
 						.compareTo(((Float) myDocB.getMetadata().get(MetaData.DISTANCE))))
@@ -94,35 +97,31 @@ public class ImageService {
 				.stream().collect(Collectors.toMap(myDoc -> myDoc.getId(), myDoc -> myDoc));
 		return imageMap.entrySet().stream().map(myEntry -> createImageContainer(aiDocuments, myEntry))
 				.sorted((containerA, containerB) -> containerA.distance().compareTo(containerB.distance()))
-				.map(myContainer -> new ImageDto(myContainer.document().getContent(),
+				.map(myContainer -> new ImageDto(myContainer.document().getText(),
 						Base64.getEncoder().encodeToString(myContainer.image().getImageContent()),
 						myContainer.image().getImageType()))
 				.limit(this.resultSize).toList();
 	}
 
 	private ImageContainer createImageContainer(List<Document> aiDocuments, Entry<UUID, Image> myEntry) {
-		return new ImageContainer(
-				createIdFilteredStream(aiDocuments, myEntry)
-						.findFirst().orElseThrow(),
-				myEntry.getValue(),
-				createIdFilteredStream(aiDocuments, myEntry)
+		return new ImageContainer(createIdFilteredStream(aiDocuments, myEntry).findFirst().orElseThrow(),
+				myEntry.getValue(), createIdFilteredStream(aiDocuments, myEntry)
 						.map(myDoc -> (Float) myDoc.getMetadata().get(MetaData.DISTANCE)).findFirst().orElseThrow());
 	}
 
 	private Stream<Document> createIdFilteredStream(List<Document> aiDocuments, Entry<UUID, Image> myEntry) {
 		return aiDocuments.stream()
-				.filter(myDoc -> myEntry.getKey().toString()
-						.equals((String) myDoc.getMetadata().get(MetaData.ID)));
+				.filter(myDoc -> myEntry.getKey().toString().equals((String) myDoc.getMetadata().get(MetaData.ID)));
 	}
 
 	private ResultData createAIResult(ImageQueryDto imageDto) {
 		if (ImageType.JPEG.equals(imageDto.getImageType()) || ImageType.PNG.equals(imageDto.getImageType())) {
 			imageDto = this.resizeImage(imageDto);
 		}
-		var prompt = new Prompt(new UserMessage(imageDto.getQuery(), List
-				.of(new Media(MimeType.valueOf(imageDto.getImageType().getMediaType()), imageDto.getImageContent()))));
-		var response = this.chatClient.call(prompt);
-		var resultData = new ResultData(response.getResult().getOutput().getContent(), imageDto);
+		var prompt = new Prompt(UserMessage.builder().text(imageDto.getQuery())
+		  .media(Media.builder().data(new ByteArrayResource(imageDto.getImageContent())).mimeType(MimeType.valueOf(imageDto.getImageType().getMediaType())).build()).build());
+		var response = this.chatClient.prompt(prompt).call().chatResponse();
+		var resultData = new ResultData(response.getResult().getOutput().getText(), imageDto);
 		return resultData;
 	}
 
