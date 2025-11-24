@@ -12,15 +12,10 @@
  */
 package ch.xxx.aidoclibchat.adapter.client;
 
-import java.io.IOException;
 import java.util.List;
 
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
-
-import com.fasterxml.jackson.dataformat.csv.CsvMapper;
-import com.fasterxml.jackson.dataformat.csv.CsvSchema;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 
 import ch.xxx.aidoclibchat.domain.client.ImportClient;
 import ch.xxx.aidoclibchat.domain.model.dto.ArtistDto;
@@ -36,6 +31,8 @@ import ch.xxx.aidoclibchat.domain.model.entity.Subject;
 import ch.xxx.aidoclibchat.domain.model.entity.Work;
 import ch.xxx.aidoclibchat.domain.model.entity.WorkLink;
 import ch.xxx.aidoclibchat.usecase.mapping.TableMapper;
+import tools.jackson.dataformat.csv.CsvMapper;
+import tools.jackson.dataformat.csv.CsvSchema;
 
 @Component
 public class ImportRestClient implements ImportClient {
@@ -43,11 +40,10 @@ public class ImportRestClient implements ImportClient {
 	private final TableMapper tableMapper;
 	private final RestClient restClient;
 
-	public ImportRestClient(TableMapper tableMapper, RestClient restClient) {
+	public ImportRestClient(TableMapper tableMapper, RestClient restClient, CsvMapper csvMapper) {
 		this.tableMapper = tableMapper;
 		this.restClient = restClient;
-		this.csvMapper = new CsvMapper();
-		this.csvMapper.registerModule(new JavaTimeModule());
+		this.csvMapper = csvMapper;		
 	}
 
 	@Override
@@ -60,12 +56,8 @@ public class ImportRestClient implements ImportClient {
 
 	private <T> List<T> mapString(String result, Class<T> myClass) {
 		List<T> zipcodes = List.of();
-		try {
-			zipcodes = this.csvMapper.readerFor(myClass).with(CsvSchema.builder().setUseHeader(true).build())
-					.<T>readValues(result).readAll();
-		} catch (IOException e) {
-			throw new RuntimeException(e);
-		}
+		zipcodes = this.csvMapper.readerFor(myClass).with(CsvSchema.builder().setUseHeader(true).build())
+				.<T>readValues(result).readAll();
 		return zipcodes;
 	}
 

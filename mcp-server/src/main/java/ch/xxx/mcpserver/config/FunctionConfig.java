@@ -13,18 +13,15 @@
    See the License for the specific language governing permissions and
    limitations under the License.
  */
-package ch.xxx.aidoclibchat.adapter.config;
-
-import java.util.function.Function;
+package ch.xxx.mcpserver.config;
 
 import org.springframework.ai.tool.annotation.Tool;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
+import org.springframework.stereotype.Service;
 
-import ch.xxx.aidoclibchat.domain.client.OpenLibraryClient;
-import ch.xxx.aidoclibchat.domain.client.TmdbClient;
+import ch.xxx.mcpserver.client.external.OpenLibraryClient;
+import ch.xxx.mcpserver.client.external.TmdbClient;
 
-@Configuration
+@Service
 public class FunctionConfig {
 	private final OpenLibraryClient openLibraryClient;
 	private final TmdbClient tmdbClient;
@@ -35,16 +32,20 @@ public class FunctionConfig {
 		this.openLibraryClient = openLibraryClient;
 		this.tmdbClient = tmdbClient;
 	}
-	
-	@Bean(OPEN_LIBRARY_CLIENT)
-	@Tool(description = "Search for books by author, title or subject.")
-	public Function<OpenLibraryClient.Request, OpenLibraryClient.Response> openLibraryClient() {		
-		return this.openLibraryClient::apply;
+	/*
+	@Tool(description="Test")
+	public String test() {
+		return "Test successful";
 	}
+*/
 
-	@Bean(THE_MOVIE_DATABASE_CLIENT)
-	@Tool(description = "Search for movies by title.")
-	public Function<TmdbClient.Request, TmdbClient.Response> theMovieDatabaseClient() {
-		return this.tmdbClient::apply;
+	@Tool(description = "Search for books by author, title or subject.")
+	public OpenLibraryClient.Response openLibraryClient(OpenLibraryClient.Request request) {		
+		return this.openLibraryClient.loadBooks(request);
+	}
+	
+	@Tool(description = "Search for movies by title.")	
+	public TmdbClient.Response theMovieDatabaseClient(TmdbClient.Request request) {
+		return this.tmdbClient.loadMovies(request);
 	}
 }
